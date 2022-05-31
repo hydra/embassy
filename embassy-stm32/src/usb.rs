@@ -135,18 +135,21 @@ impl<'d, T: Instance> Driver<'d, T> {
 
         let regs = T::regs();
 
+        #[cfg(stm32l5)]
         unsafe {
             crate::peripherals::PWR::enable();
 
             pac::PWR
                 .cr2()
                 .modify(|w| w.set_usv(pac::pwr::vals::Usv::VALID));
+        }
 
+        unsafe {
             <T as RccPeripheral>::enable();
             <T as RccPeripheral>::reset();
 
             regs.cntr().write(|w| {
-                w.set_pdwn(true);
+                w.set_pdwn(false);
                 w.set_fres(true);
             });
 
@@ -1047,8 +1050,9 @@ pub trait Instance: sealed::Instance + RccPeripheral + 'static {
 pin_trait!(DpPin, Instance);
 pin_trait!(DmPin, Instance);
 
+#[cfg(not(stm32f3))]
 foreach_interrupt!(
-    ($inst:ident, usb, $block:ident, HP, $irq:ident) => {
+    ($inst:ident, usb, $block:ident, LP, $irq:ident) => {
         impl sealed::Instance for crate::peripherals::$inst {
             fn regs() -> crate::pac::usb::Usb {
                 crate::pac::$inst
@@ -1059,8 +1063,19 @@ foreach_interrupt!(
             type Interrupt = crate::interrupt::$irq;
         }
     };
-
 );
+
+#[cfg(stm32f3)]
+impl sealed::Instance for crate::peripherals::USB {
+    fn regs() -> crate::pac::usb::Usb {
+        crate::pac::USB
+    }
+}
+
+#[cfg(stm32f3)]
+impl Instance for crate::peripherals::USB {
+    type Interrupt = crate::interrupt::USB_LP_CAN_RX0;
+}
 
 // TODO cfgs
 const EP_COUNT: usize = 8;
@@ -1071,7 +1086,10 @@ const DP_PULL_UP_FEATURE: bool = true;
 const DP_PULL_UP_FEATURE: bool = false;
 
 // TODO cfgs
-const EP_MEMORY_ADDR: *mut u16 = 0x4000d800 as _;
+#[cfg(stm32l5)]
+const EP_MEMORY_ADDR: *mut u16 = 0x4000_d800 as _;
+#[cfg(stm32f3)]
+const EP_MEMORY_ADDR: *mut u16 = 0x4000_6000 as _;
 
 #[cfg(any(stm32f1, stm32l1, stm32f303xb, stm32f303xc))]
 const EP_MEMORY_SIZE: usize = 512;
